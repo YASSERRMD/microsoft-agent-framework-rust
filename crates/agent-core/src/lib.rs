@@ -172,7 +172,7 @@ pub enum FallbackStrategy {
     Abort,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ChainOfThought {
     notes: Vec<String>,
 }

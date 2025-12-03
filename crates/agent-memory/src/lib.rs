@@ -12,27 +12,32 @@ pub enum MemoryError {
 }
 
 #[async_trait]
-pub trait MemoryStore: Send + Sync {
+pub trait MemoryStore: Send + Sync + std::fmt::Debug {
     async fn put(&self, key: &str, value: &Value) -> Result<(), MemoryError>;
     async fn get(&self, key: &str) -> Result<Option<Value>, MemoryError>;
     async fn search(&self, query: &str) -> Result<Vec<Value>, MemoryError>;
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct InMemoryStore {
     inner: tokio::sync::RwLock<HashMap<String, Value>>,
 }
 
 impl InMemoryStore {
     pub fn new() -> Self {
-        Self { inner: tokio::sync::RwLock::new(HashMap::new()) }
+        Self {
+            inner: tokio::sync::RwLock::new(HashMap::new()),
+        }
     }
 }
 
 #[async_trait]
 impl MemoryStore for InMemoryStore {
     async fn put(&self, key: &str, value: &Value) -> Result<(), MemoryError> {
-        self.inner.write().await.insert(key.to_string(), value.clone());
+        self.inner
+            .write()
+            .await
+            .insert(key.to_string(), value.clone());
         Ok(())
     }
 
@@ -53,6 +58,7 @@ impl MemoryStore for InMemoryStore {
     }
 }
 
+#[derive(Debug)]
 pub struct NullStore;
 
 #[async_trait]
