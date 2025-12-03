@@ -1,7 +1,7 @@
 use chrono::Utc;
-use opentelemetry::trace::{TraceContextExt, Tracer, TracerProvider};
+use opentelemetry::trace::{TraceContextExt, Tracer, TracerProvider as OtelTracerProvider};
 use opentelemetry::Context;
-use opentelemetry_sdk::trace::{self, TracerProvider};
+use opentelemetry_sdk::trace::{self, TracerProvider as SdkTracerProvider};
 use prometheus::{
     Encoder, HistogramOpts, HistogramVec, IntCounterVec, Opts, Registry, TextEncoder,
 };
@@ -25,7 +25,7 @@ pub struct Telemetry {
 
 impl Telemetry {
     pub fn new() -> Self {
-        let tracer = TracerProvider::builder().build().versioned_tracer(
+        let tracer = SdkTracerProvider::builder().build().versioned_tracer(
             "agent-framework",
             Some(env!("CARGO_PKG_VERSION")),
             None,
@@ -141,7 +141,7 @@ impl Telemetry {
     }
 
     pub fn start_span(&self, name: &str) -> Context {
-        Context::current_with_span(self.tracer.start(name))
+        Context::current_with_span(self.tracer.start(name.to_string()))
     }
 
     pub fn export_metrics(&self) -> String {
