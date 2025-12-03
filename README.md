@@ -27,3 +27,20 @@ The workspace now includes scaffolded crates for each pillar:
 - `tests/` – Unit and integration coverage across pillars.
 
 See [`docs/scope.md`](docs/scope.md) for the full development scope, including required features, performance goals, testing expectations, and extensibility targets.
+
+## Examples
+
+The `examples` package includes binaries for common agent profiles:
+
+```
+cargo run -p agent-examples --bin chatbot
+cargo run -p agent-examples --bin research
+cargo run -p agent-examples --bin code
+cargo run -p agent-examples --bin web_search
+cargo run -p agent-examples --bin multi_agent
+cargo run -p agent-examples --bin tool_enabled
+cargo run -p agent-examples --bin react
+cargo run -p agent-examples --bin planning_execution
+```
+
+Each example sets up its own `Agent` implementation, registers built-in tools, and drives the control loop so you can quickly try different orchestration patterns.
