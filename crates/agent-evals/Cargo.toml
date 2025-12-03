@@ -8,3 +8,6 @@ description = "Evaluators for the Microsoft Agent Framework in Rust"
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 async-trait = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

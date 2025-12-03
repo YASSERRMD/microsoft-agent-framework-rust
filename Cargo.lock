@@ -39,6 +39,7 @@ dependencies = [
  "async-trait",
  "serde_json",
  "thiserror 1.0.69",
+ "tokio",
 ]
 
 [[package]]
@@ -101,6 +102,7 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
