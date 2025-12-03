@@ -1,6 +1,7 @@
 use chrono::Utc;
-use opentelemetry::trace::{Span, TraceContextExt, Tracer};
+use opentelemetry::trace::{TraceContextExt, Tracer};
 use opentelemetry::Context;
+use opentelemetry_sdk::trace::{self, TracerProvider};
 use prometheus::{
     Encoder, HistogramOpts, HistogramVec, IntCounterVec, Opts, Registry, TextEncoder,
 };
@@ -12,7 +13,7 @@ use std::sync::Mutex;
 use tracing::{event, Level};
 
 pub struct Telemetry {
-    tracer: opentelemetry::sdk::trace::Tracer,
+    tracer: trace::Tracer,
     registry: Registry,
     llm_calls: IntCounterVec,
     tool_calls: IntCounterVec,
@@ -24,9 +25,11 @@ pub struct Telemetry {
 
 impl Telemetry {
     pub fn new() -> Self {
-        let tracer = opentelemetry::sdk::trace::TracerProvider::builder()
-            .build()
-            .versioned_tracer("agent-framework", Some(env!("CARGO_PKG_VERSION")), None);
+        let tracer = TracerProvider::builder().build().versioned_tracer(
+            "agent-framework",
+            Some(env!("CARGO_PKG_VERSION")),
+            None,
+        );
         let registry = Registry::new();
         let llm_calls = IntCounterVec::new(Opts::new("llm_calls", "LLM call count"), &["model"])
             .expect("metric");
@@ -137,7 +140,7 @@ impl Telemetry {
         }
     }
 
-    pub fn start_span(&self, name: &str) -> (Context, Span) {
+    pub fn start_span(&self, name: &str) -> (Context, trace::Span) {
         let span = self.tracer.start(name);
         let cx = Context::current_with_span(span.clone());
         (cx, span)
