@@ -1,5 +1,5 @@
 use chrono::Utc;
-use opentelemetry::trace::{TraceContextExt, Tracer};
+use opentelemetry::trace::{TraceContextExt, Tracer, TracerProvider};
 use opentelemetry::Context;
 use opentelemetry_sdk::trace::{self, TracerProvider};
 use prometheus::{
@@ -140,10 +140,8 @@ impl Telemetry {
         }
     }
 
-    pub fn start_span(&self, name: &str) -> (Context, trace::Span) {
-        let span = self.tracer.start(name);
-        let cx = Context::current_with_span(span.clone());
-        (cx, span)
+    pub fn start_span(&self, name: &str) -> Context {
+        Context::current_with_span(self.tracer.start(name))
     }
 
     pub fn export_metrics(&self) -> String {
