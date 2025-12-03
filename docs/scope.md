@@ -65,8 +65,10 @@ agent-framework-rs/
 - Structured logs, spans, and audit log writer.
 
 ## 9. Safety System
-- Input validation, tool sandboxing, rate limiting, policy-based access, redaction, retry/fallback, guardrail LLMs.
-- RBAC aligned with agno-rust and prompt/output policy validators per tool.
+- Input validation, prompt filtering, and policy-based request scrubbing.
+- Tool sandboxing with per-tool access controllers, rate limiters, and RBAC aligned with agno-rust.
+- Redaction rules, retry/fallback directives, and guardrail LLMs for both inputs and outputs.
+- Output policy validators per tool with configurable blocking behavior.
 
 ## 10. CLI + Developer Tools (agent-cli)
 - Commands: `agent new`, `agent run`, `agent test`, `agent tools`, `agent models` for scaffolding, execution, testing, and debugging.

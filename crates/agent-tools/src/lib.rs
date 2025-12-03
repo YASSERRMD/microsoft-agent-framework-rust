@@ -27,6 +27,20 @@ pub struct ToolMetadata {
     pub tags: Vec<String>,
     pub allowed_roles: Vec<String>,
     pub cooldown: Option<Duration>,
+    pub access_controller: Option<AccessController>,
+    pub rate_limit: Option<RateLimitPolicy>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct AccessController {
+    pub required_roles: Vec<String>,
+    pub policy_name: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RateLimitPolicy {
+    pub max_calls: u64,
+    pub per: Duration,
 }
 
 struct ToolEntry {
@@ -38,6 +52,13 @@ struct ToolEntry {
 pub struct ToolRegistry {
     tools: BTreeMap<String, ToolEntry>, // deterministic ordering
     last_invoked: Mutex<BTreeMap<String, Instant>>, // cooldown tracking
+    rate_windows: Mutex<BTreeMap<String, RateWindow>>, // rate limiter
+}
+
+#[derive(Debug, Clone)]
+struct RateWindow {
+    started_at: Instant,
+    calls: u64,
 }
 
 impl ToolRegistry {
@@ -91,6 +112,7 @@ impl ToolRegistry {
 
         self.enforce_access(name, &entry.metadata, caller_roles)?;
         self.enforce_cooldown(name, &entry.metadata)?;
+        self.enforce_rate_limit(name, &entry.metadata)?;
 
         Ok(entry.tool.execute(args).await?)
     }
@@ -101,22 +123,73 @@ impl ToolRegistry {
         metadata: &ToolMetadata,
         caller_roles: &[String],
     ) -> Result<(), ToolInvocationError> {
-        if metadata.allowed_roles.is_empty() {
-            return Ok(());
-        }
+        let role_permitted = metadata.allowed_roles.is_empty()
+            || caller_roles
+                .iter()
+                .any(|role| metadata.allowed_roles.iter().any(|r| r == role));
 
-        let permitted = caller_roles
-            .iter()
-            .any(|role| metadata.allowed_roles.iter().any(|r| r == role));
+        let access_controller_permitted = metadata
+            .access_controller
+            .as_ref()
+            .map(|controller| {
+                controller.required_roles.is_empty()
+                    || controller
+                        .required_roles
+                        .iter()
+                        .any(|role| caller_roles.iter().any(|caller| caller == role))
+            })
+            .unwrap_or(true);
 
-        if permitted {
+        if role_permitted && access_controller_permitted {
             Ok(())
         } else {
+            let reason = metadata
+                .access_controller
+                .as_ref()
+                .and_then(|c| c.policy_name.clone())
+                .unwrap_or_else(|| "caller lacks required role".into());
             Err(ToolInvocationError::AccessDenied {
                 tool: name.to_string(),
-                reason: "caller lacks required role".into(),
+                reason,
             })
         }
+    }
+
+    fn enforce_rate_limit(
+        &self,
+        name: &str,
+        metadata: &ToolMetadata,
+    ) -> Result<(), ToolInvocationError> {
+        let Some(policy) = &metadata.rate_limit else {
+            return Ok(());
+        };
+
+        let mut guard = self
+            .rate_windows
+            .lock()
+            .expect("rate limiter mutex poisoned");
+        let window = guard.entry(name.to_string()).or_insert_with(|| RateWindow {
+            started_at: Instant::now(),
+            calls: 0,
+        });
+
+        if window.started_at.elapsed() > policy.per {
+            window.started_at = Instant::now();
+            window.calls = 0;
+        }
+
+        if window.calls >= policy.max_calls {
+            return Err(ToolInvocationError::RateLimited {
+                tool: name.to_string(),
+                retry_after_ms: policy
+                    .per
+                    .saturating_sub(window.started_at.elapsed())
+                    .as_millis() as u64,
+            });
+        }
+
+        window.calls += 1;
+        Ok(())
     }
 
     fn enforce_cooldown(
@@ -149,6 +222,8 @@ pub enum ToolInvocationError {
     AccessDenied { tool: String, reason: String },
     #[error("tool {tool} cooling down, try again in {remaining_ms}ms")]
     CoolingDown { tool: String, remaining_ms: u64 },
+    #[error("tool {tool} rate limited, retry after {retry_after_ms}ms")]
+    RateLimited { tool: String, retry_after_ms: u64 },
     #[error(transparent)]
     Tool(#[from] ToolError),
 }

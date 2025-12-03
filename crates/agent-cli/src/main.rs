@@ -53,8 +53,7 @@ impl Agent for DemoAgent {
                         fallback: None,
                         safety: SafetyPolicy {
                             allow_tool_execution: true,
-                            redaction_rules: vec![],
-                            rbac_roles: vec![],
+                            ..SafetyPolicy::default()
                         },
                     },
                     chain_of_thought: None,
@@ -70,8 +69,7 @@ impl Agent for DemoAgent {
                         fallback: None,
                         safety: SafetyPolicy {
                             allow_tool_execution: true,
-                            redaction_rules: vec![],
-                            rbac_roles: vec![],
+                            ..SafetyPolicy::default()
                         },
                     },
                     chain_of_thought: None,
@@ -84,7 +82,7 @@ impl Agent for DemoAgent {
     async fn execute_step(
         &self,
         step: &Step,
-        _ctx: &mut agent_core::AgentContext,
+        ctx: &mut agent_core::AgentContext,
     ) -> Result<StepOutcome, agent_core::AgentError> {
         if let Some(tool_name) = &step.tool {
             let caller_roles = ctx.tool_permissions.allowed.clone();
