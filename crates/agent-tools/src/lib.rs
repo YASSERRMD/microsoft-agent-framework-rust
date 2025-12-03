@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use serde_json::Value;
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 use thiserror::Error;
 
@@ -47,6 +48,10 @@ pub mod builtins {
     use super::{Tool, ToolError};
     use async_trait::async_trait;
     use serde_json::Value;
+    use tokio::fs;
+
+    use std::fs as stdfs;
+    use std::path::PathBuf;
 
     pub struct TimeTool;
 
@@ -67,6 +72,115 @@ pub mod builtins {
         async fn execute(&self, _args: Value) -> Result<Value, ToolError> {
             let now = chrono::Utc::now().to_rfc3339();
             Ok(Value::String(now))
+        }
+    }
+
+    pub struct FileTool {
+        root: PathBuf,
+    }
+
+    impl FileTool {
+        pub fn new(root: impl AsRef<std::path::Path>) -> Self {
+            Self { root: root.as_ref().to_path_buf() }
+        }
+
+        fn canonical_root(&self) -> Result<PathBuf, ToolError> {
+            stdfs::create_dir_all(&self.root)
+                .map_err(|e| ToolError::Execution(format!("failed to create root: {e}")))?;
+            self.root
+                .canonicalize()
+                .map_err(|e| ToolError::Execution(format!("failed to canonicalize root: {e}")))
+        }
+
+        fn resolve(&self, path: &str) -> Result<PathBuf, ToolError> {
+            let root = self.canonical_root()?;
+            let candidate = root.join(path);
+            let resolved = candidate
+                .canonicalize()
+                .map_err(|e| ToolError::Execution(format!("failed to access path: {e}")))?;
+            if !resolved.starts_with(&root) {
+                return Err(ToolError::InvalidArgs("path escapes sandbox".into()));
+            }
+            Ok(resolved)
+        }
+    }
+
+    #[async_trait]
+    impl Tool for FileTool {
+        fn name(&self) -> &'static str {
+            "file"
+        }
+
+        fn input_schema(&self) -> Value {
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string"},
+                    "operation": {"type": "string", "enum": ["read", "write"]},
+                    "content": {"type": "string"}
+                },
+                "required": ["path", "operation"],
+                "additionalProperties": false
+            })
+        }
+
+        fn output_schema(&self) -> Value {
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string"},
+                    "operation": {"type": "string"},
+                    "content": {"type": "string"},
+                    "bytes": {"type": "integer"}
+                },
+                "required": ["path", "operation"],
+                "additionalProperties": false
+            })
+        }
+
+        async fn execute(&self, args: Value) -> Result<Value, ToolError> {
+            let path = args
+                .get("path")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| ToolError::InvalidArgs("path missing".into()))?;
+            let op = args
+                .get("operation")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| ToolError::InvalidArgs("operation missing".into()))?;
+            let resolved = self.resolve(path)?;
+
+            match op {
+                "read" => {
+                    let content = fs::read_to_string(&resolved)
+                        .await
+                        .map_err(|e| ToolError::Execution(format!("read failed: {e}")))?;
+                    Ok(serde_json::json!({
+                        "path": resolved.display().to_string(),
+                        "operation": "read",
+                        "content": content
+                    }))
+                }
+                "write" => {
+                    let content = args
+                        .get("content")
+                        .and_then(|v| v.as_str())
+                        .ok_or_else(|| ToolError::InvalidArgs("content missing for write".into()))?;
+                    if let Some(parent) = resolved.parent() {
+                        fs::create_dir_all(parent)
+                            .await
+                            .map_err(|e| ToolError::Execution(format!("failed to create directories: {e}")))?;
+                    }
+                    fs::write(&resolved, content)
+                        .await
+                        .map_err(|e| ToolError::Execution(format!("write failed: {e}")))?;
+                    Ok(serde_json::json!({
+                        "path": resolved.display().to_string(),
+                        "operation": "write",
+                        "bytes": content.len()
+                    }))
+                }
+                _ => Err(ToolError::InvalidArgs("unsupported operation".into())),
+            }
         }
     }
 
@@ -172,5 +286,43 @@ pub mod builtins {
                 .map_err(|e| ToolError::Execution(e.to_string()))?;
             Ok(serde_json::json!({"status": status, "body": body}))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::builtins::FileTool;
+    use super::ToolError;
+    use serde_json::json;
+
+    #[tokio::test]
+    async fn file_tool_read_write_roundtrip() {
+        let dir = tempfile::tempdir().unwrap();
+        let tool = FileTool::new(dir.path());
+
+        let write_result = tool
+            .execute(json!({"path": "notes/hello.txt", "operation": "write", "content": "hi there"}))
+            .await
+            .unwrap();
+        assert_eq!(write_result.get("operation").unwrap(), "write");
+
+        let read_result = tool
+            .execute(json!({"path": "notes/hello.txt", "operation": "read"}))
+            .await
+            .unwrap();
+        assert_eq!(read_result.get("operation").unwrap(), "read");
+        assert_eq!(read_result.get("content").unwrap(), "hi there");
+    }
+
+    #[tokio::test]
+    async fn file_tool_rejects_traversal() {
+        let dir = tempfile::tempdir().unwrap();
+        let tool = FileTool::new(dir.path());
+
+        let result = tool
+            .execute(json!({"path": "../evil.txt", "operation": "write", "content": "nope"}))
+            .await;
+
+        assert!(matches!(result, Err(ToolError::InvalidArgs(_))));
     }
 }

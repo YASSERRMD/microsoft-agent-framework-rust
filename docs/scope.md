@@ -1,6 +1,14 @@
 # Rust Agent Framework – Scope Summary
 
-This document captures the full development scope for the Rust edition of the Microsoft Agent Framework, aligning with the pillars of stateful agents, plans and steps, tools, models, evaluators, orchestration, streaming, telemetry, pluggable memory, safety hooks, and tool protocols.
+This document captures the full development scope for the Rust edition of the Microsoft Agent Framework. The Rust version must uphold the same pillars as the Microsoft baseline while pushing for higher performance and modularity:
+
+- Stateful agents with pluggable memory
+- Plans and steps (including hidden chain-of-thought)
+- Tools and tool protocols
+- Model abstraction and providers
+- Evaluators and safety hooks
+- Orchestration/streaming runtime with telemetry
+- CLI and developer tooling
 
 ## 1. Project Structure
 ```
@@ -77,3 +85,8 @@ agent-framework-rs/
 
 ## 15. Extensibility Requirements
 - Modular, plugin-friendly design supporting new tools, memory stores, agents, evaluators, and models through clear traits and registries.
+
+## 16. Target Outcome
+- Production-grade, high-performance Rust implementation that matches Microsoft Agent Framework capabilities while delivering higher throughput and stronger safety defaults.
+- Multi-agent ready with consistent tool protocols, safety controls, and telemetry.
+- Fully documented with examples, CLI workflows, and reference traits to make extension straightforward for new models, tools, memory stores, and evaluators.
