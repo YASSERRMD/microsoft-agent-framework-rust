@@ -7,6 +7,7 @@ description = "Telemetry utilities for the Microsoft Agent Framework in Rust"
 [dependencies]
 tracing = { workspace = true }
 opentelemetry = { workspace = true }
+opentelemetry_sdk = { workspace = true }
 prometheus = { workspace = true }
 serde_json = { workspace = true }
 chrono = { workspace = true }
