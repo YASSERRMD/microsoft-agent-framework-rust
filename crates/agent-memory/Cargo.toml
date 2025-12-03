@@ -8,5 +8,3 @@ description = "Memory stores for the Microsoft Agent Framework in Rust"
 serde_json = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
-async-trait = { workspace = true }
-tokio = { workspace = true }
