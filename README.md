@@ -13,6 +13,12 @@ The workspace now includes scaffolded crates for each pillar:
 - `agent-telemetry` – tracing, metrics, and audit helpers.
 - `agent-cli` – a demo CLI that can run a sample agent loop and list available models/tools.
 
+## Safety System (Microsoft Parity)
+- Input validation pipelines, prompt filters, and guardrail LLM hooks to keep agents within policy.
+- Tool sandboxing, per-tool access controllers, and RBAC metadata aligned with the agno-rust model.
+- Rate limiters, cooldowns, and policy-based access rules to prevent abuse or runaway loops.
+- Redaction rules, retry/fallback directives, and output policy validators to keep responses compliant.
+
 ## Repository Layout
 - `crates/` – Individual framework crates (core, runtime, tools, models, memory, evals, telemetry, CLI).
 - `examples/` – Ready-to-run agent templates.

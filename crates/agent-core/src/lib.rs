@@ -155,6 +155,93 @@ pub struct SafetyPolicy {
     pub allow_tool_execution: bool,
     pub redaction_rules: Vec<String>,
     pub rbac_roles: Vec<String>,
+    pub input_validation: Vec<InputValidationRule>,
+    pub sandbox: SandboxPolicy,
+    pub rate_limits: Vec<RateLimitRule>,
+    pub access_policies: Vec<AccessPolicy>,
+    pub retry_fallbacks: Vec<RetryFallbackDirective>,
+    pub guardrails: Vec<GuardrailLLM>,
+    pub prompt_filters: Vec<PromptFilter>,
+    pub output_validators: Vec<OutputPolicyValidator>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct InputValidationRule {
+    pub name: String,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SandboxPolicy {
+    pub enabled: bool,
+    pub allowed_operations: Vec<String>,
+    pub forbidden_paths: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct RateLimitRule {
+    pub name: String,
+    pub max_calls: u64,
+    pub per_seconds: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AccessPolicy {
+    pub resource: String,
+    pub required_roles: Vec<String>,
+    pub conditions: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct RetryFallbackDirective {
+    pub identifier: String,
+    pub retryable_errors: Vec<String>,
+    pub fallback_steps: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct GuardrailLLM {
+    pub model: String,
+    pub purpose: GuardrailPurpose,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum GuardrailPurpose {
+    InputValidation,
+    OutputModeration,
+    ToolGatekeeping,
+}
+
+impl Default for GuardrailPurpose {
+    fn default() -> Self {
+        GuardrailPurpose::InputValidation
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PromptFilter {
+    pub pattern: String,
+    pub action: FilterAction,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum FilterAction {
+    Reject,
+    Mask,
+    AllowWithTag,
+}
+
+impl Default for FilterAction {
+    fn default() -> Self {
+        FilterAction::AllowWithTag
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct OutputPolicyValidator {
+    pub name: String,
+    pub description: Option<String>,
+    pub block_on_failure: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
