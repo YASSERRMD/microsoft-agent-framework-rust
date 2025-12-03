@@ -1,11 +1,12 @@
 use chrono::Utc;
 use opentelemetry::trace::{TraceContextExt, Tracer, TracerProvider as OtelTracerProvider};
-use opentelemetry::Context;
+use opentelemetry::{Context, KeyValue};
 use opentelemetry_sdk::trace::{self, TracerProvider as SdkTracerProvider};
 use prometheus::{
     Encoder, HistogramOpts, HistogramVec, IntCounterVec, Opts, Registry, TextEncoder,
 };
 use serde_json::Value;
+use std::borrow::Cow;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::Path;
@@ -28,8 +29,8 @@ impl Telemetry {
         let tracer = SdkTracerProvider::builder().build().versioned_tracer(
             "agent-framework",
             Some(env!("CARGO_PKG_VERSION")),
-            None,
-            None,
+            Option::<Cow<'static, str>>::None,
+            Option::<Vec<KeyValue>>::None,
         );
         let registry = Registry::new();
         let llm_calls = IntCounterVec::new(Opts::new("llm_calls", "LLM call count"), &["model"])
