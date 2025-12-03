@@ -58,8 +58,7 @@ pub fn default_policies() -> StepPolicies {
         fallback: None,
         safety: SafetyPolicy {
             allow_tool_execution: true,
-            redaction_rules: vec![],
-            rbac_roles: vec![],
+            ..SafetyPolicy::default()
         },
     }
 }
