@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 use serde_json::Value;
 use std::collections::BTreeMap;
-use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -21,9 +21,23 @@ pub trait Tool: Send + Sync {
     async fn execute(&self, args: Value) -> Result<Value, ToolError>;
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct ToolMetadata {
+    pub description: Option<String>,
+    pub tags: Vec<String>,
+    pub allowed_roles: Vec<String>,
+    pub cooldown: Option<Duration>,
+}
+
+struct ToolEntry {
+    tool: Arc<dyn Tool>,
+    metadata: ToolMetadata,
+}
+
 #[derive(Default)]
 pub struct ToolRegistry {
-    tools: BTreeMap<String, Arc<dyn Tool>>, // deterministic ordering
+    tools: BTreeMap<String, ToolEntry>, // deterministic ordering
+    last_invoked: Mutex<BTreeMap<String, Instant>>, // cooldown tracking
 }
 
 impl ToolRegistry {
@@ -32,21 +46,117 @@ impl ToolRegistry {
     }
 
     pub fn register<T: Tool + 'static>(&mut self, tool: T) {
-        self.tools.insert(tool.name().to_string(), Arc::new(tool));
+        self.register_with_metadata(tool, ToolMetadata::default());
+    }
+
+    pub fn register_with_metadata<T: Tool + 'static>(&mut self, tool: T, metadata: ToolMetadata) {
+        self.tools.insert(
+            tool.name().to_string(),
+            ToolEntry {
+                tool: Arc::new(tool),
+                metadata,
+            },
+        );
     }
 
     pub fn get(&self, name: &str) -> Option<Arc<dyn Tool>> {
-        self.tools.get(name).cloned()
+        self.tools.get(name).map(|entry| entry.tool.clone())
+    }
+
+    pub fn get_metadata(&self, name: &str) -> Option<ToolMetadata> {
+        self.tools.get(name).map(|entry| entry.metadata.clone())
     }
 
     pub fn list(&self) -> Vec<String> {
         self.tools.keys().cloned().collect()
     }
+
+    pub fn list_with_metadata(&self) -> Vec<(String, ToolMetadata)> {
+        self.tools
+            .iter()
+            .map(|(name, entry)| (name.clone(), entry.metadata.clone()))
+            .collect()
+    }
+
+    pub async fn invoke(
+        &self,
+        name: &str,
+        args: Value,
+        caller_roles: &[String],
+    ) -> Result<Value, ToolInvocationError> {
+        let entry = self
+            .tools
+            .get(name)
+            .ok_or_else(|| ToolInvocationError::NotFound(name.to_string()))?;
+
+        self.enforce_access(name, &entry.metadata, caller_roles)?;
+        self.enforce_cooldown(name, &entry.metadata)?;
+
+        Ok(entry.tool.execute(args).await?)
+    }
+
+    fn enforce_access(
+        &self,
+        name: &str,
+        metadata: &ToolMetadata,
+        caller_roles: &[String],
+    ) -> Result<(), ToolInvocationError> {
+        if metadata.allowed_roles.is_empty() {
+            return Ok(());
+        }
+
+        let permitted = caller_roles
+            .iter()
+            .any(|role| metadata.allowed_roles.iter().any(|r| r == role));
+
+        if permitted {
+            Ok(())
+        } else {
+            Err(ToolInvocationError::AccessDenied {
+                tool: name.to_string(),
+                reason: "caller lacks required role".into(),
+            })
+        }
+    }
+
+    fn enforce_cooldown(
+        &self,
+        name: &str,
+        metadata: &ToolMetadata,
+    ) -> Result<(), ToolInvocationError> {
+        if let Some(cooldown) = metadata.cooldown {
+            let mut guard = self.last_invoked.lock().expect("cooldown mutex poisoned");
+            if let Some(last) = guard.get(name) {
+                let elapsed = last.elapsed();
+                if elapsed < cooldown {
+                    return Err(ToolInvocationError::CoolingDown {
+                        tool: name.to_string(),
+                        remaining_ms: cooldown.saturating_sub(elapsed).as_millis() as u64,
+                    });
+                }
+            }
+            guard.insert(name.to_string(), Instant::now());
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum ToolInvocationError {
+    #[error("tool {0} not found")]
+    NotFound(String),
+    #[error("tool {tool} access denied: {reason}")]
+    AccessDenied { tool: String, reason: String },
+    #[error("tool {tool} cooling down, try again in {remaining_ms}ms")]
+    CoolingDown { tool: String, remaining_ms: u64 },
+    #[error(transparent)]
+    Tool(#[from] ToolError),
 }
 
 pub mod builtins {
     use super::{Tool, ToolError};
     use async_trait::async_trait;
+    use serde::{Deserialize, Serialize};
     use serde_json::Value;
     use tokio::fs;
 
@@ -81,7 +191,9 @@ pub mod builtins {
 
     impl FileTool {
         pub fn new(root: impl AsRef<std::path::Path>) -> Self {
-            Self { root: root.as_ref().to_path_buf() }
+            Self {
+                root: root.as_ref().to_path_buf(),
+            }
         }
 
         fn canonical_root(&self) -> Result<PathBuf, ToolError> {
@@ -92,12 +204,35 @@ pub mod builtins {
                 .map_err(|e| ToolError::Execution(format!("failed to canonicalize root: {e}")))
         }
 
-        fn resolve(&self, path: &str) -> Result<PathBuf, ToolError> {
+        fn resolve(&self, path: &str, allow_create: bool) -> Result<PathBuf, ToolError> {
             let root = self.canonical_root()?;
             let candidate = root.join(path);
-            let resolved = candidate
-                .canonicalize()
-                .map_err(|e| ToolError::Execution(format!("failed to access path: {e}")))?;
+
+            let resolved = if allow_create {
+                let parent = candidate
+                    .parent()
+                    .ok_or_else(|| ToolError::InvalidArgs("invalid path".into()))?;
+
+                let canonical_parent = parent.canonicalize().or_else(|_| {
+                    stdfs::create_dir_all(parent).map_err(|e| {
+                        ToolError::Execution(format!("failed to create parent: {e}"))
+                    })?;
+                    parent
+                        .canonicalize()
+                        .map_err(|e| ToolError::Execution(format!("failed to access path: {e}")))
+                })?;
+
+                let file_name = candidate
+                    .file_name()
+                    .ok_or_else(|| ToolError::InvalidArgs("invalid path".into()))?;
+
+                canonical_parent.join(file_name)
+            } else {
+                candidate
+                    .canonicalize()
+                    .map_err(|e| ToolError::Execution(format!("failed to access path: {e}")))?
+            };
+
             if !resolved.starts_with(&root) {
                 return Err(ToolError::InvalidArgs("path escapes sandbox".into()));
             }
@@ -147,7 +282,7 @@ pub mod builtins {
                 .get("operation")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| ToolError::InvalidArgs("operation missing".into()))?;
-            let resolved = self.resolve(path)?;
+            let resolved = self.resolve(path, op == "write")?;
 
             match op {
                 "read" => {
@@ -161,14 +296,16 @@ pub mod builtins {
                     }))
                 }
                 "write" => {
-                    let content = args
-                        .get("content")
-                        .and_then(|v| v.as_str())
-                        .ok_or_else(|| ToolError::InvalidArgs("content missing for write".into()))?;
+                    let content =
+                        args.get("content")
+                            .and_then(|v| v.as_str())
+                            .ok_or_else(|| {
+                                ToolError::InvalidArgs("content missing for write".into())
+                            })?;
                     if let Some(parent) = resolved.parent() {
-                        fs::create_dir_all(parent)
-                            .await
-                            .map_err(|e| ToolError::Execution(format!("failed to create directories: {e}")))?;
+                        fs::create_dir_all(parent).await.map_err(|e| {
+                            ToolError::Execution(format!("failed to create directories: {e}"))
+                        })?;
                     }
                     fs::write(&resolved, content)
                         .await
@@ -209,8 +346,79 @@ pub mod builtins {
                 .get("expression")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| ToolError::InvalidArgs("expression missing".into()))?;
-            let value: f64 = meval::eval_str(expr).map_err(|e| ToolError::Execution(e.to_string()))?;
+            let value: f64 =
+                meval::eval_str(expr).map_err(|e| ToolError::Execution(e.to_string()))?;
             Ok(Value::from(value))
+        }
+    }
+
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    pub struct SearchResult {
+        pub title: String,
+        pub url: String,
+        pub snippet: String,
+    }
+
+    #[async_trait]
+    pub trait SearchProvider: Send + Sync {
+        async fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>, ToolError>;
+    }
+
+    pub struct SearchTool<P: SearchProvider> {
+        provider: std::sync::Arc<P>,
+    }
+
+    impl<P: SearchProvider> SearchTool<P> {
+        pub fn new(provider: std::sync::Arc<P>) -> Self {
+            Self { provider }
+        }
+    }
+
+    #[async_trait]
+    impl<P: SearchProvider + 'static> Tool for SearchTool<P> {
+        fn name(&self) -> &'static str {
+            "search"
+        }
+
+        fn input_schema(&self) -> Value {
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 50}
+                },
+                "required": ["query"]
+            })
+        }
+
+        fn output_schema(&self) -> Value {
+            serde_json::json!({
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "title": {"type": "string"},
+                        "url": {"type": "string"},
+                        "snippet": {"type": "string"}
+                    },
+                    "required": ["title", "url", "snippet"]
+                }
+            })
+        }
+
+        async fn execute(&self, args: Value) -> Result<Value, ToolError> {
+            let query = args
+                .get("query")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| ToolError::InvalidArgs("query missing".into()))?;
+            let limit = args
+                .get("limit")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(5)
+                .min(50) as usize;
+
+            let results = self.provider.search(query, limit).await?;
+            Ok(serde_json::to_value(results).map_err(|e| ToolError::Execution(e.to_string()))?)
         }
     }
 
@@ -246,7 +454,9 @@ pub mod builtins {
 
     impl HttpFetchTool {
         pub fn new() -> Self {
-            Self { client: reqwest::Client::new() }
+            Self {
+                client: reqwest::Client::new(),
+            }
         }
     }
 
@@ -291,9 +501,12 @@ pub mod builtins {
 
 #[cfg(test)]
 mod tests {
-    use super::builtins::FileTool;
-    use super::ToolError;
+    use super::builtins::{FileTool, SearchProvider, SearchResult, SearchTool};
+    use super::{ToolError, ToolInvocationError, ToolMetadata, ToolRegistry};
+    use crate::Tool;
     use serde_json::json;
+    use std::sync::Arc;
+    use std::time::Duration;
 
     #[tokio::test]
     async fn file_tool_read_write_roundtrip() {
@@ -301,7 +514,9 @@ mod tests {
         let tool = FileTool::new(dir.path());
 
         let write_result = tool
-            .execute(json!({"path": "notes/hello.txt", "operation": "write", "content": "hi there"}))
+            .execute(
+                json!({"path": "notes/hello.txt", "operation": "write", "content": "hi there"}),
+            )
             .await
             .unwrap();
         assert_eq!(write_result.get("operation").unwrap(), "write");
@@ -324,5 +539,92 @@ mod tests {
             .await;
 
         assert!(matches!(result, Err(ToolError::InvalidArgs(_))));
+    }
+
+    struct StaticSearchProvider {
+        results: Vec<SearchResult>,
+    }
+
+    #[async_trait::async_trait]
+    impl SearchProvider for StaticSearchProvider {
+        async fn search(&self, _query: &str, limit: usize) -> Result<Vec<SearchResult>, ToolError> {
+            Ok(self.results.iter().take(limit).cloned().collect())
+        }
+    }
+
+    #[tokio::test]
+    async fn search_tool_returns_results() {
+        let provider = Arc::new(StaticSearchProvider {
+            results: vec![SearchResult {
+                title: "Example".into(),
+                url: "https://example.com".into(),
+                snippet: "Example domain".into(),
+            }],
+        });
+
+        let tool = SearchTool::new(provider);
+        let output = tool
+            .execute(json!({"query": "example", "limit": 3}))
+            .await
+            .unwrap();
+
+        assert_eq!(output.as_array().unwrap().len(), 1);
+        assert_eq!(output[0]["title"], "Example");
+    }
+
+    #[tokio::test]
+    async fn registry_enforces_cooldown_and_access() {
+        struct NoopTool;
+
+        #[async_trait::async_trait]
+        impl super::Tool for NoopTool {
+            fn name(&self) -> &'static str {
+                "noop"
+            }
+
+            fn input_schema(&self) -> serde_json::Value {
+                json!({"type": "object"})
+            }
+
+            fn output_schema(&self) -> serde_json::Value {
+                json!({"type": "null"})
+            }
+
+            async fn execute(
+                &self,
+                _args: serde_json::Value,
+            ) -> Result<serde_json::Value, ToolError> {
+                Ok(json!(null))
+            }
+        }
+
+        let mut registry = ToolRegistry::new();
+        registry.register_with_metadata(
+            NoopTool,
+            ToolMetadata {
+                allowed_roles: vec!["admin".into()],
+                cooldown: Some(Duration::from_millis(50)),
+                description: None,
+                tags: vec![],
+            },
+        );
+
+        let denied = registry
+            .invoke("noop", json!({}), &["guest".into()])
+            .await
+            .unwrap_err();
+        assert!(matches!(denied, ToolInvocationError::AccessDenied { .. }));
+
+        let first = registry
+            .invoke("noop", json!({}), &["admin".into()])
+            .await
+            .unwrap();
+        assert!(first.is_null());
+
+        let cooldown = registry
+            .invoke("noop", json!({}), &["admin".into()])
+            .await
+            .unwrap_err();
+        assert!(matches!(cooldown, ToolInvocationError::CoolingDown { .. }));
     }
 }

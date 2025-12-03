@@ -87,11 +87,12 @@ impl Agent for DemoAgent {
         _ctx: &mut agent_core::AgentContext,
     ) -> Result<StepOutcome, agent_core::AgentError> {
         if let Some(tool_name) = &step.tool {
-            if let Some(tool) = self.tools.get(tool_name) {
-                let output = tool
-                    .execute(step.args.clone())
-                    .await
-                    .map_err(|e| agent_core::AgentError::Tool(e.to_string()))?;
+            let caller_roles = ctx.tool_permissions.allowed.clone();
+            if let Ok(output) = self
+                .tools
+                .invoke(tool_name, step.args.clone(), &caller_roles)
+                .await
+            {
                 return Ok(StepOutcome {
                     step_id: step.id.clone(),
                     output,
@@ -157,7 +158,7 @@ async fn main() -> anyhow::Result<()> {
             }
         }
         Commands::Tools => {
-            println!("Built-in tools: log, math, time, http_fetch, file");
+            println!("Built-in tools: log, math, time, http_fetch, file, search (pluggable)");
         }
         Commands::Models => {
             println!("Models: stub, random_reasoner");
