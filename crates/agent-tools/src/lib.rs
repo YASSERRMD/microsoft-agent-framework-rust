@@ -81,7 +81,9 @@ pub mod builtins {
 
     impl FileTool {
         pub fn new(root: impl AsRef<std::path::Path>) -> Self {
-            Self { root: root.as_ref().to_path_buf() }
+            Self {
+                root: root.as_ref().to_path_buf(),
+            }
         }
 
         fn canonical_root(&self) -> Result<PathBuf, ToolError> {
@@ -161,14 +163,16 @@ pub mod builtins {
                     }))
                 }
                 "write" => {
-                    let content = args
-                        .get("content")
-                        .and_then(|v| v.as_str())
-                        .ok_or_else(|| ToolError::InvalidArgs("content missing for write".into()))?;
+                    let content =
+                        args.get("content")
+                            .and_then(|v| v.as_str())
+                            .ok_or_else(|| {
+                                ToolError::InvalidArgs("content missing for write".into())
+                            })?;
                     if let Some(parent) = resolved.parent() {
-                        fs::create_dir_all(parent)
-                            .await
-                            .map_err(|e| ToolError::Execution(format!("failed to create directories: {e}")))?;
+                        fs::create_dir_all(parent).await.map_err(|e| {
+                            ToolError::Execution(format!("failed to create directories: {e}"))
+                        })?;
                     }
                     fs::write(&resolved, content)
                         .await
@@ -209,7 +213,8 @@ pub mod builtins {
                 .get("expression")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| ToolError::InvalidArgs("expression missing".into()))?;
-            let value: f64 = meval::eval_str(expr).map_err(|e| ToolError::Execution(e.to_string()))?;
+            let value: f64 =
+                meval::eval_str(expr).map_err(|e| ToolError::Execution(e.to_string()))?;
             Ok(Value::from(value))
         }
     }
@@ -246,7 +251,9 @@ pub mod builtins {
 
     impl HttpFetchTool {
         pub fn new() -> Self {
-            Self { client: reqwest::Client::new() }
+            Self {
+                client: reqwest::Client::new(),
+            }
         }
     }
 
@@ -301,7 +308,9 @@ mod tests {
         let tool = FileTool::new(dir.path());
 
         let write_result = tool
-            .execute(json!({"path": "notes/hello.txt", "operation": "write", "content": "hi there"}))
+            .execute(
+                json!({"path": "notes/hello.txt", "operation": "write", "content": "hi there"}),
+            )
             .await
             .unwrap();
         assert_eq!(write_result.get("operation").unwrap(), "write");

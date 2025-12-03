@@ -3,7 +3,7 @@ use agent_core::{
     StepOutcome, StepPolicies, ToolPermissions,
 };
 use agent_models::StubModel;
-use agent_runtime::ControlLoop;
+use agent_runtime::{ControlLoop, ControlMode};
 use agent_tools::builtins::{FileTool, LogTool, MathTool, TimeTool};
 use agent_tools::ToolRegistry;
 use clap::{Parser, Subcommand};
@@ -150,6 +150,7 @@ async fn main() -> anyhow::Result<()> {
             let loop_ctrl = ControlLoop {
                 max_iterations: 4,
                 delay: std::time::Duration::from_millis(0),
+                mode: ControlMode::Deterministic,
             };
             let outcomes = loop_ctrl.run(&agent, &mut ctx).await?;
             for outcome in outcomes {
