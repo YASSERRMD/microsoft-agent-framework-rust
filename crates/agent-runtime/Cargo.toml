@@ -1,0 +1,12 @@
+[package]
+name = "agent-runtime"
+version = "0.1.0"
+edition = "2021"
+description = "Runtime orchestration for the Microsoft Agent Framework in Rust"
+
+[dependencies]
+agent-core = { path = "../agent-core" }
+async-trait = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+serde_json = { workspace = true }
