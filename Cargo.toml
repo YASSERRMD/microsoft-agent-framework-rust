@@ -8,6 +8,7 @@ members = [
     "crates/agent-evals",
     "crates/agent-telemetry",
     "crates/agent-cli",
+    "examples",
 ]
 resolver = "2"
 
