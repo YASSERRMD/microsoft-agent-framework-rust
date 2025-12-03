@@ -29,6 +29,7 @@ impl Telemetry {
             "agent-framework",
             Some(env!("CARGO_PKG_VERSION")),
             None,
+            None,
         );
         let registry = Registry::new();
         let llm_calls = IntCounterVec::new(Opts::new("llm_calls", "LLM call count"), &["model"])
