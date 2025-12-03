@@ -14,6 +14,9 @@ impl StepExecutor {
                 output: serde_json::json!({"error": err.to_string()}),
                 observations: vec!["step failed".to_string()],
                 success: false,
+                retries: 0,
+                fallback_used: false,
+                control_notes: vec!["failure".to_string()],
             },
         }
     }
@@ -27,7 +30,11 @@ pub struct ControlLoop {
 
 impl ControlLoop {
     #[instrument(skip_all)]
-    pub async fn run<A: Agent>(&self, agent: &A, ctx: &mut AgentContext) -> Result<Vec<StepOutcome>, AgentError> {
+    pub async fn run<A: Agent>(
+        &self,
+        agent: &A,
+        ctx: &mut AgentContext,
+    ) -> Result<Vec<StepOutcome>, AgentError> {
         agent.initialize(ctx).await?;
         let plan: Plan = agent.think(ctx).await?;
         let mut executable = plan.executable();
