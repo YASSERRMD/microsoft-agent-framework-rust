@@ -680,6 +680,8 @@ mod tests {
                 allowed_roles: vec!["admin".into()],
                 cooldown: Some(Duration::from_millis(50)),
                 description: None,
+                access_controller: None,
+                rate_limit: None,
                 tags: vec![],
             },
         );
