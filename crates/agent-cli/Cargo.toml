@@ -1,0 +1,19 @@
+[package]
+name = "agent-cli"
+version = "0.1.0"
+edition = "2021"
+description = "CLI tools for the Microsoft Agent Framework in Rust"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+agent-runtime = { path = "../agent-runtime" }
+agent-core = { path = "../agent-core" }
+agent-tools = { path = "../agent-tools" }
+agent-models = { path = "../agent-models" }
+agent-memory = { path = "../agent-memory" }
+agent-evals = { path = "../agent-evals" }
+agent-telemetry = { path = "../agent-telemetry" }
+tokio = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }

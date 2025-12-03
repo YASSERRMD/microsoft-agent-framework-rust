@@ -1,0 +1,14 @@
+[package]
+name = "agent-models"
+version = "0.1.0"
+edition = "2021"
+description = "Model abstractions for the Microsoft Agent Framework in Rust"
+
+[dependencies]
+async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+rand = { workspace = true }
+tokio-stream = { workspace = true }

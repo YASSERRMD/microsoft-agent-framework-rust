@@ -1,0 +1,10 @@
+[package]
+name = "agent-evals"
+version = "0.1.0"
+edition = "2021"
+description = "Evaluators for the Microsoft Agent Framework in Rust"
+
+[dependencies]
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+async-trait = { workspace = true }

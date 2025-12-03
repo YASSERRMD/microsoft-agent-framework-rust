@@ -1,0 +1,12 @@
+[package]
+name = "agent-core"
+version = "0.1.0"
+edition = "2021"
+description = "Core types and traits for the Microsoft Agent Framework in Rust"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+async-trait = { workspace = true }
+tracing = { workspace = true }

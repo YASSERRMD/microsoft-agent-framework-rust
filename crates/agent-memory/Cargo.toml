@@ -1,0 +1,12 @@
+[package]
+name = "agent-memory"
+version = "0.1.0"
+edition = "2021"
+description = "Memory stores for the Microsoft Agent Framework in Rust"
+
+[dependencies]
+serde_json = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true }

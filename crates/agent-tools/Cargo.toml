@@ -1,0 +1,15 @@
+[package]
+name = "agent-tools"
+version = "0.1.0"
+edition = "2021"
+description = "Tool abstractions and registry for the Microsoft Agent Framework in Rust"
+
+[dependencies]
+async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+reqwest = { workspace = true }
+tokio = { workspace = true }
+chrono = { workspace = true }
+meval = { workspace = true }
