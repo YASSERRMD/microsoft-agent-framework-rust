@@ -284,6 +284,7 @@ impl LLMModel for EmbeddingModel {
     }
 }
 
+#[derive(Debug)]
 pub struct StubModel;
 
 #[async_trait]

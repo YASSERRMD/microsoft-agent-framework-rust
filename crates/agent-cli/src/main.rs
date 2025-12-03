@@ -1,11 +1,12 @@
 use agent_core::{
-    Agent, AgentConfig, AgentContext, AgentState, Plan, RetryPolicy, SafetyPolicy, Step,
-    StepOutcome, StepPolicies, ToolPermissions,
+    Agent, AgentConfig, AgentContext, AgentError, AgentState, Plan, RetryPolicy, SafetyPolicy,
+    Step, StepOutcome, StepPolicies, ToolPermissions,
 };
 use agent_models::StubModel;
 use agent_runtime::{ControlLoop, ControlMode};
 use agent_tools::builtins::{FileTool, LogTool, MathTool, TimeTool};
 use agent_tools::ToolRegistry;
+use async_trait::async_trait;
 use clap::{Parser, Subcommand};
 use serde_json::json;
 use std::sync::Arc;
@@ -32,15 +33,23 @@ enum Commands {
     Models,
 }
 
-#[derive(Debug)]
 struct DemoAgent {
     model: StubModel,
     tools: Arc<ToolRegistry>,
 }
 
-#[async_trait::async_trait]
+impl std::fmt::Debug for DemoAgent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DemoAgent")
+            .field("model", &"StubModel")
+            .field("tools", &"ToolRegistry")
+            .finish()
+    }
+}
+
+#[async_trait]
 impl Agent for DemoAgent {
-    async fn plan(&self, _ctx: &agent_core::AgentContext) -> Result<Plan, agent_core::AgentError> {
+    async fn plan(&self, _ctx: &AgentContext) -> Result<Plan, AgentError> {
         Ok(Plan {
             goal: "Say hello and compute a sum".into(),
             steps: vec![
@@ -84,8 +93,8 @@ impl Agent for DemoAgent {
     async fn execute_step(
         &self,
         step: &Step,
-        ctx: &mut agent_core::AgentContext,
-    ) -> Result<StepOutcome, agent_core::AgentError> {
+        ctx: &mut AgentContext,
+    ) -> Result<StepOutcome, AgentError> {
         if let Some(tool_name) = &step.tool {
             let caller_roles = ctx.tool_permissions.allowed.clone();
             if let Ok(output) = self
