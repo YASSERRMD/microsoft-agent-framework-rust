@@ -11,7 +11,8 @@ The workspace now includes scaffolded crates for each pillar:
 - `agent-memory` – memory trait with in-memory and null backends.
 - `agent-evals` – evaluator traits and basic validators.
 - `agent-telemetry` – tracing, metrics, and audit helpers.
-- `agent-cli` – a demo CLI that can run a sample agent loop and list available models/tools.
+- `agent-cli` – a demo CLI that scaffolds projects, runs sample agents, lists tools/models, and validates tool schemas via
+  `agent new`, `agent run`, `agent tools`, `agent models`, and `agent test` commands.
 
 ## Safety System (Microsoft Parity)
 - Input validation pipelines, prompt filters, and guardrail LLM hooks to keep agents within policy.
